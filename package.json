@@ -14,8 +14,8 @@
   "contributes": {
     "commands": [
       {
-        "command": "renew.helloWorld",
-        "title": "Hello World"
+        "command": "renew.redesign",
+        "title": "Renew: Redesign my website"
       }
     ]
   },
