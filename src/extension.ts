@@ -3,23 +3,29 @@
 import { HfInference } from "@huggingface/inference";
 import fs, { readFileSync } from 'fs';
 import * as vscode from 'vscode';
+import dotenv from 'dotenv';
+import path from 'path';
 
-const HF_TOKEN = "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";
-const inference = new HfInference(HF_TOKEN);
+let inference: HfInference | null = null;
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
+	const envPath = path.join(context.extensionPath, '.env');
+	dotenv.config({ path: envPath });
+	inference = new HfInference(process.env.HF_TOKEN);
+
 	// This line of code will only be executed once when your extension is activated
-	console.log('Congratulations, your extension "renew" is now active!');
+	console.log('Renew: Congratulations, your extension is now active!');
 
 	// The command has been defined in the package.json file
 	// Now provide the implementation of the command with registerCommand
 	// The commandId parameter must match the command field in package.json
-	const disposable = vscode.commands.registerCommand('renew.redesign', () => {
+	const disposable = vscode.commands.registerCommand('renew.redesign', async () => {
 		// The code you place here will be executed every time your command is executed
 		vscode.window.showInformationMessage('Renew: Redesign is in progress');
-		replaceContentInFiles();
+		await replaceContentInFiles();
+		vscode.window.showInformationMessage('Renew: Redesign is complete');
 	});
 	context.subscriptions.push(disposable);
 }
@@ -31,30 +37,31 @@ const replaceContentInFiles = async () => {
 	for (const file of files) {
 		const document = await vscode.workspace.openTextDocument(file);
 		const text = document.getText();
+		let updatedText = "";
 
+		// replace images
 		const imgTags = text.match(/<img[^>]+src=["']([^"']+)["'][^>]*>/g);
 		const imageUrls = imgTags?.map(tag => tag.match(/src=["']([^"']+)["']/)[1]) || [];
-		let updatedText = "";
 		for (const imageUrl of imageUrls) {
 			const imageFilePath = await getFilePathFromWorkspace(imageUrl);
 			if (imageFilePath) {
-				queryModel(imageFilePath, imageUrl).then(result => {
-					console.log('queryModel result:' + result);
-					updatedText = text.replace(/<img[^>]+src=["']([^"']+)["'][^>]*>/g, `<img src="${result}" />`);
-				});
+				await replaceImage(imageFilePath);
 			}
 		}
-		if (updatedText) {
-			const edit = new vscode.WorkspaceEdit();
-			const fullRange = new vscode.Range(
-				document.positionAt(0),
-				document.positionAt(text.length)
-			);
-			edit.replace(file, fullRange, updatedText);
-			await vscode.workspace.applyEdit(edit);
-		}
+
+		// replace texts
+		// updatedText = text.replace(/<img[^>]+src=["']([^"']+)["'][^>]*>/g, `<img src="${result}" />`);
+		// if (updatedText) {
+		// 	const edit = new vscode.WorkspaceEdit();
+		// 	const fullRange = new vscode.Range(
+		// 		document.positionAt(0),
+		// 		document.positionAt(text.length)
+		// 	);
+		// 	edit.replace(file, fullRange, updatedText);
+		// 	await vscode.workspace.applyEdit(edit);
+		// }
 	}
-	vscode.window.showInformationMessage('Renew: Redesign is complete');
+	return;
 };
 
 export async function getFilePathFromWorkspace(fileName: string): Promise<string | undefined> {
@@ -77,9 +84,7 @@ export async function getFilePathFromWorkspace(fileName: string): Promise<string
 	}
 }
 
-const queryModel = async (imageFilePath, imageUrl) => {
-	const imageData = fs.readFileSync(imageFilePath);
-
+const replaceImage = async (imageFilePath: string) => {
 	try {
 		const imageToTextResponse = await inference.imageToText({
 			data: readFileSync(imageFilePath),
@@ -97,7 +102,6 @@ const queryModel = async (imageFilePath, imageUrl) => {
 		const buffer = Buffer.from(await textToImageResponse.arrayBuffer());
 		fs.writeFileSync(imageFilePath, buffer);
 
-		return imageUrl;
 	} catch (error) {
 		throw error; // rethrow the error so it can be caught by the caller
 	}

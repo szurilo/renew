@@ -47,6 +47,7 @@
     "typescript": "^5.6.3"
   },
   "dependencies": {
-    "@huggingface/inference": "^2.8.1"
+    "@huggingface/inference": "^2.8.1",
+    "dotenv": "^16.4.7"
   }
 }
