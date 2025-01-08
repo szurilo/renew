@@ -4,7 +4,7 @@
   "description": "Renew renews your website so it will be fresh and easy to understand.",
   "version": "0.0.1",
   "engines": {
-    "vscode": "^1.95.0"
+    "vscode": "^1.93.1"
   },
   "categories": [
     "Other"
@@ -47,9 +47,10 @@
     "typescript": "^5.6.3"
   },
   "dependencies": {
-    "@huggingface/inference": "^2.8.1",
-    "@types/cheerio": "^0.22.35",
-    "cheerio": "^1.0.0",
-    "dotenv": "^16.4.7"
+    "dom-serializer": "^2.0.0",
+    "domhandler": "^5.0.3",
+    "dotenv": "^16.4.7",
+    "htmlparser2": "^10.0.0",
+    "openai": "^4.77.3"
   }
 }
