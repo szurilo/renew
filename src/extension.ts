@@ -1,13 +1,14 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import OpenAI from "openai";
-import fs, { readFileSync } from 'fs';
+import fs from 'fs';
 import * as vscode from 'vscode';
 import dotenv from 'dotenv';
 import path from 'path';
 import { parseDocument } from "htmlparser2";
 import serialize from "dom-serializer";
 import ky, { Input } from "ky";
+import sharp from "sharp";
 
 let openai: OpenAI;
 
@@ -87,16 +88,12 @@ export async function getFilePathFromWorkspace(fileName: string): Promise<string
 
 const replaceImage = async (imageFilePath: string) => {
 
-	// const response = await openai.images.generate({
-	// 	model: "dall-e-2",
-	// 	prompt: "a white siamese cat",
-	// 	n: 1,
-	// 	size: "256x256",
-	// });
+	const pngImageFilePath = replaceFileExtensionToPng(imageFilePath);
+	await convertImageToPng(imageFilePath, pngImageFilePath);
 
 	const response = await openai.images.createVariation({
 		model: "dall-e-2",
-		image: fs.createReadStream(imageFilePath),
+		image: fs.createReadStream(pngImageFilePath),
 		n: 1,
 		size: "256x256"
 	});
@@ -105,8 +102,38 @@ const replaceImage = async (imageFilePath: string) => {
 	const newImage = await resp.arrayBuffer();
 
 	const buffer = Buffer.from(newImage);
-	fs.writeFileSync(imageFilePath, buffer);
+	fs.writeFileSync(pngImageFilePath, buffer);
 };
+
+async function convertImageToPng(inputPath: string, outputPath: string) {
+	try {
+		await sharp(inputPath)
+			.png() // Convert to PNG
+			.toBuffer({ resolveWithObject: true })
+			.then(({ data, info }) => {
+				if (info.size > 4 * 1024 * 1024) { // Check size
+					return sharp(data)
+						.resize({ width: Math.round(info.width * 0.9) }) // Resize proportionally
+						.toFile(outputPath);
+				} else {
+					fs.writeFileSync(outputPath, data);
+				}
+			});
+		console.log(`Image converted and saved to ${outputPath}`);
+	} catch (error) {
+		console.error('Error converting image:', error);
+	}
+}
+
+function replaceFileExtensionToPng(filePath: string): string {
+	const parsedPath = path.parse(filePath);
+	const pngPath = path.format({
+		...parsedPath,
+		base: undefined,  // Need to remove base so ext and name are used
+		ext: '.png'
+	});
+	return pngPath;
+}
 
 async function replaceTextInHtml(html: string): Promise<string> {
 	const dom = parseDocument(html);
