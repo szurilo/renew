@@ -7,6 +7,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { parseDocument } from "htmlparser2";
 import serialize from "dom-serializer";
+import ky, { Input } from "ky";
 
 let openai: OpenAI;
 
@@ -41,18 +42,15 @@ const replaceContentInFiles = async () => {
 		const text = document.getText();
 
 		// replace images
-		// const imgTags = text.match(/<img[^>]+src=["']([^"']+)["'][^>]*>/g);
-		// const imageUrls = imgTags?.map(tag => tag.match(/src=["']([^"']+)["']/)[1]) || [];
-		// for (const imageUrl of imageUrls) {
-		// 	const imageFilePath = await getFilePathFromWorkspace(imageUrl);
-		// 	if (imageFilePath) {
-		// 		await replaceImage(imageFilePath);
-		// 	}
-		// }
+		const imgTags = text.match(/<img[^>]+src=["']([^"']+)["'][^>]*>/g);
+		const imageUrls = imgTags?.map(tag => tag.match(/src=["']([^"']+)["']/)[1]) || [];
+		for (const imageUrl of imageUrls) {
+			const imageFilePath = await getFilePathFromWorkspace(imageUrl);
+			if (imageFilePath) {
+				await replaceImage(imageFilePath);
+			}
+		}
 
-		// replace texts
-		// updatedText = text.replace(/<img[^>]+src=["']([^"']+)["'][^>]*>/g, `<img src="${result}" />`);
-		// if (updatedText) {
 		const updatedText = await replaceTextInHtml(text);
 
 		const edit = new vscode.WorkspaceEdit();
@@ -87,25 +85,28 @@ export async function getFilePathFromWorkspace(fileName: string): Promise<string
 	}
 }
 
-// const replaceImage = async (imageFilePath: string) => {
-// 	console.log("Calling imageToText model");
-// 	const imageToTextResponse = await inference.imageToText({
-// 		data: readFileSync(imageFilePath),
-// 		model: "Salesforce/blip-image-captioning-large",
-// 		options: {
-// 			wait_for_model: true
-// 		}
-// 	});
+const replaceImage = async (imageFilePath: string) => {
 
-// 	console.log("Calling textToImage model");
-// 	const textToImageResponse = await inference.textToImage({
-// 		model: "black-forest-labs/FLUX.1-dev",
-// 		inputs: imageToTextResponse.generated_text,
-// 	});
+	// const response = await openai.images.generate({
+	// 	model: "dall-e-2",
+	// 	prompt: "a white siamese cat",
+	// 	n: 1,
+	// 	size: "256x256",
+	// });
 
-// 	const buffer = Buffer.from(await textToImageResponse.arrayBuffer());
-// 	fs.writeFileSync(imageFilePath, buffer);
-// };
+	const response = await openai.images.createVariation({
+		model: "dall-e-2",
+		image: fs.createReadStream(imageFilePath),
+		n: 1,
+		size: "256x256"
+	});
+
+	const resp = await ky.get(response.data[0].url as Input);
+	const newImage = await resp.arrayBuffer();
+
+	const buffer = Buffer.from(newImage);
+	fs.writeFileSync(imageFilePath, buffer);
+};
 
 async function replaceTextInHtml(html: string): Promise<string> {
 	const dom = parseDocument(html);
@@ -134,8 +135,8 @@ const updateText = async (text: string): Promise<any> => {
 		const completion = await openai.chat.completions.create({
 			model: "gpt-4o-mini",
 			store: true,
-			messages: [{ role: "system", content: "You are just rephrasing the given content, but make sure the content is human readable text, like sentences or phrases." },
-			{ "role": "user", "content": "Rephrase the following text: " + text }
+			messages: [{ role: "system", content: "You are just rephrasing the given input, but make sure the input is human readable text, like sentences or phrases. Your answers are always less than 100 words." },
+			{ role: "user", content: text }
 			]
 		});
 		return completion.choices[0].message.content;
