@@ -11,11 +11,12 @@ import sharp from "sharp";
 import { randomUUID } from "crypto";
 
 const PNG_MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB
-const imageGenLimit = 0;
-const textGenLimit = 10;
+let imageGenLimit: number;
+let textGenLimit: number;
 let openai: OpenAI;
 let imageGenerations: number;
 let textGenerations: number;
+let globalProgress: vscode.Progress<{ message?: string; increment?: number; }>;
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -23,25 +24,52 @@ export async function activate(context: vscode.ExtensionContext) {
 	const envPath = path.join(context.extensionPath, '.env');
 	dotenv.config({ path: envPath });
 	openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+	imageGenLimit = process.env.IMAGE_GEN_LIMIT ? parseInt(process.env.IMAGE_GEN_LIMIT) : 3;
+	textGenLimit = process.env.TEXT_GEN_LIMIT ? parseInt(process.env.TEXT_GEN_LIMIT) : 30;
 
 	// The command has been defined in the package.json file
 	// Now provide the implementation of the command with registerCommand
 	// The commandId parameter must match the command field in package.json
 	const disposable = vscode.commands.registerCommand('renew.redesign', async () => {
-		// The code you place here will be executed every time your command is executed
-		vscode.window.showInformationMessage('Renew: Redesign is in progress...');
-		imageGenerations = 0;
-		textGenerations = 0;
-		await replaceContentInFiles();
-		vscode.window.showInformationMessage('Renew: Redesign is complete');
+		// vscode.window.showInformationMessage('Renew: Redesign is in progress...');
+		// imageGenerations = 0;
+		// textGenerations = 0;
+		// await replaceContentInFiles();
+		// vscode.window.showInformationMessage('Renew: Redesign is complete');
+
+		vscode.window.withProgress({
+			location: vscode.ProgressLocation.Notification,
+			cancellable: true
+		}, async (progress, token) => {
+			token.onCancellationRequested(() => {
+				console.log("User canceled the long running operation");
+			});
+			globalProgress = progress;
+			imageGenerations = 0;
+			textGenerations = 0;
+			await replaceContentInFiles(progress);
+			if (textGenerations >= textGenLimit) {
+				vscode.window.showInformationMessage("Renew: Text generation limit reached.\n Redesign is complete");
+				console.log("Text generation limit reached");
+				return;
+			}
+			if (imageGenerations >= imageGenLimit) {
+				vscode.window.showInformationMessage("Renew: Image generation limit reached.\n Redesign is complete");
+				console.log("Image generation limit reached");
+				return;
+			}
+			vscode.window.showInformationMessage("Renew: Redesign is complete");
+			return;
+		});
 	});
 	context.subscriptions.push(disposable);
 }
 
-const replaceContentInFiles = async () => {
+const replaceContentInFiles = async (progress: vscode.Progress<{ message?: string; increment?: number; }>) => {
 	const files = await vscode.workspace.findFiles('**/*.html', '**/node_modules/**');
 
 	for (const file of files) {
+		progress.report({ increment: 100 / files.length, message: "Redesigning: " + file.path });
 		const document = await vscode.workspace.openTextDocument(file);
 		const documentText = document.getText();
 
@@ -61,8 +89,6 @@ const replaceImages = async (text: string) => {
 		const imageFilePath = await getFilePathFromWorkspace(imageUrl);
 		if (imageFilePath) {
 			if (imageGenerations >= imageGenLimit) {
-				vscode.window.showInformationMessage('Renew: Image generation limit reached');
-				console.log("Image generation limit reached");
 				return;
 			}
 			imageGenerations++;
@@ -170,8 +196,6 @@ const traverseTextNodes = async (node: any): Promise<void> => {
 	if (node.type === 'text' && node.data.trim()) {
 
 		if (textGenerations >= textGenLimit) {
-			vscode.window.showInformationMessage('Renew: Text generation limit reached');
-			console.log("Text generation limit reached");
 			return;
 		}
 		textGenerations++;
